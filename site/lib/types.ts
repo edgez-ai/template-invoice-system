@@ -37,13 +37,14 @@ export type FileMetadata = Models.Row & {
 };
 
 export type PaymentStage = {
-  id: string; name: string; description?: string; amountMinor: number; vatRateBasisPoints: number;
-  dueDate?: string; status: "planned" | "invoiced"; invoiceId?: string;
+  id: string; name: string; description?: string; amountMinor: number;
+  status: "planned" | "invoiced"; invoiceId?: string;
 };
 
 export type ProjectInvoice = {
   id: string; number: string; stageId: string; fileId: string; issueDate: string; dueDate?: string;
-  subtotalMinor: number; vatMinor: number; totalMinor: number; status: "issued" | "paid" | "void";
+  subtotalMinor: number; vatMinor: number; totalMinor: number; vatRateBasisPoints?: number;
+  reverseVat?: boolean; status: "issued" | "paid" | "void";
 };
 
 export type Section = "dashboard" | "companies" | "contacts" | "pipeline" | "projects" | "finance" | "settings";

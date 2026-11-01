@@ -1,6 +1,6 @@
 import { Client, ID, Permission, Query, Role, Storage, TablesDB } from "node-appwrite";
 import { InputFile } from "node-appwrite/file";
-import { cleanText, parseActionBody, projectNumber, safeJson } from "./business.js";
+import { cleanText, invoiceDueDate, parseActionBody, projectNumber, safeJson } from "./business.js";
 import { renderInvoicePdf } from "./invoice-pdf.js";
 
 const DATABASE_ID = process.env.INVOICE_DATABASE_ID || "invoice-system";
@@ -104,6 +104,12 @@ function commercialOf(project) {
   };
 }
 
+function vatRateOf(company) {
+  const tag = Array.isArray(company.tags) ? company.tags.find((value) => value.startsWith("vat-rate-bps:")) : "";
+  const rate = Number(tag?.slice("vat-rate-bps:".length) || 0);
+  return Number.isInteger(rate) && rate >= 0 && rate <= 10000 ? rate : 0;
+}
+
 async function audit(tables, actorUserId, action, entityType, entityId, before, after, requestId) {
   const columns = await ledgerColumns(tables);
   const payload = safeJson({ kind: "audit", actorUserId, action, entityType, entityId, before, after, requestId });
@@ -144,12 +150,12 @@ async function convertInterest(tables, actorUserId, body, requestId) {
       projectNumber: await nextDocumentNumber(tables, "project", "PRJ"),
       name: cleanText(body.name || interest.title, "Project name", 220, true),
       description: cleanText(body.description || interest.description, "Description", 5000),
-      detailsJson: JSON.stringify({ scope: "", startDate: "", targetDate: "", notes: "" }),
+      detailsJson: JSON.stringify({ scope: "", startDate: "", targetDate: "", notes: "", reverseVat: false }),
       commercialJson: JSON.stringify({ stages: [], invoices: [] }),
       status: "draft",
       ownerUserId: interest.ownerUserId || actorUserId,
       currency: interest.currency,
-      contractValueMinor: interest.estimatedValueMinor,
+      contractValueMinor: 0,
       createdBy: actorUserId,
       updatedBy: actorUserId,
     },
@@ -167,18 +173,21 @@ async function convertInterest(tables, actorUserId, body, requestId) {
 async function updateProject(tables, actorUserId, body) {
   const projectId = cleanText(body.projectId, "Project ID", 36, true);
   const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
+  const commercial = commercialOf(project);
+  const contractValueMinor = commercial.stages.reduce((sum, item) => sum + Number(item.amountMinor || 0), 0);
   const details = {
     scope: cleanText(body.scope, "Scope", 10000),
     startDate: cleanText(body.startDate, "Start date", 40),
     targetDate: cleanText(body.targetDate, "Target date", 40),
     notes: cleanText(body.notes, "Notes", 10000),
+    reverseVat: body.reverseVat === true,
   };
   return tables.updateRow({
     databaseId: DATABASE_ID, tableId: "projects", rowId: projectId,
     data: {
       name: cleanText(body.name || project.name, "Project name", 220, true),
       description: cleanText(body.description, "Description", 5000),
-      detailsJson: JSON.stringify(details), updatedBy: actorUserId,
+      detailsJson: JSON.stringify(details), contractValueMinor, updatedBy: actorUserId,
     },
   });
 }
@@ -188,18 +197,17 @@ async function addStage(tables, actorUserId, body) {
   const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
   const commercial = commercialOf(project);
   const amountMinor = Math.round(Number(body.amountMinor));
-  const vatRateBasisPoints = Math.round(Number(body.vatRateBasisPoints || 0));
   if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error("Stage amount must be greater than zero.");
-  if (!Number.isInteger(vatRateBasisPoints) || vatRateBasisPoints < 0 || vatRateBasisPoints > 10000) throw new Error("VAT rate is invalid.");
   const stage = {
     id: crypto.randomUUID(), name: cleanText(body.name, "Stage name", 160, true),
     description: cleanText(body.description, "Stage description", 1000), amountMinor,
-    vatRateBasisPoints, dueDate: cleanText(body.dueDate, "Due date", 40), status: "planned",
+    status: "planned",
     createdAt: new Date().toISOString(), createdBy: actorUserId,
   };
   commercial.stages.push(stage);
+  const contractValueMinor = commercial.stages.reduce((sum, item) => sum + Number(item.amountMinor || 0), 0);
   await tables.updateRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId,
-    data: { commercialJson: JSON.stringify(commercial), updatedBy: actorUserId } });
+    data: { commercialJson: JSON.stringify(commercial), contractValueMinor, updatedBy: actorUserId } });
   return stage;
 }
 
@@ -216,11 +224,15 @@ async function generateInvoice(tables, storage, actorUserId, body) {
   const stage = commercial.stages.find((candidate) => candidate.id === stageId);
   if (!stage) throw new Error("Payment stage was not found.");
   if (stage.invoiceId) throw new Error("This stage already has an invoice.");
+  const details = parseJson(project.detailsJson, {});
+  const reverseVat = details.reverseVat === true;
+  const vatRateBasisPoints = vatRateOf(issuer);
   const issueDate = new Date().toISOString().slice(0, 10);
-  const vatMinor = Math.round(stage.amountMinor * stage.vatRateBasisPoints / 10000);
+  const dueDate = invoiceDueDate(issueDate, customer.paymentTermsDays);
+  const vatMinor = reverseVat ? 0 : Math.round(stage.amountMinor * vatRateBasisPoints / 10000);
   const invoice = {
     id: crypto.randomUUID(), number: await nextDocumentNumber(tables, "invoice", "INV"), stageId,
-    fileId: "", issueDate, dueDate: stage.dueDate || "", subtotalMinor: stage.amountMinor,
+    fileId: "", issueDate, dueDate, subtotalMinor: stage.amountMinor, vatRateBasisPoints, reverseVat,
     vatMinor, totalMinor: stage.amountMinor + vatMinor, status: "issued", createdBy: actorUserId,
   };
   const pdf = await renderInvoicePdf({ issuer, customer, project, stage, invoice });

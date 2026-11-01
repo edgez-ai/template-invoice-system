@@ -63,11 +63,16 @@ export function renderInvoicePdf({ issuer, customer, project, stage, invoice }) 
     const totalsY = tableY + 120;
     doc.font("Helvetica").fontSize(9).fillColor("#737b8c").text("Subtotal", 360, totalsY, { width: 90, align: "right" });
     doc.fillColor("#1c2230").text(money(invoice.subtotalMinor, project.currency), 455, totalsY, { width: 75, align: "right" });
-    doc.fillColor("#737b8c").text(`VAT ${(stage.vatRateBasisPoints / 100).toFixed(2)}%`, 360, totalsY + 22, { width: 90, align: "right" });
+    const vatLabel = invoice.reverseVat ? "VAT (reverse charge)" : `VAT ${(invoice.vatRateBasisPoints / 100).toFixed(2)}%`;
+    doc.fillColor("#737b8c").text(vatLabel, 340, totalsY + 22, { width: 110, align: "right" });
     doc.fillColor("#1c2230").text(money(invoice.vatMinor, project.currency), 455, totalsY + 22, { width: 75, align: "right" });
     doc.rect(350, totalsY + 48, 195, 38).fill("#efedff");
     doc.fillColor("#5145b3").font("Helvetica-Bold").fontSize(10).text("TOTAL DUE", 365, totalsY + 63);
     doc.fontSize(13).text(money(invoice.totalMinor, project.currency), 445, totalsY + 60, { width: 85, align: "right" });
+    if (invoice.reverseVat) {
+      doc.fillColor("#737b8c").font("Helvetica").fontSize(8)
+        .text("Reverse charge: customer to account for VAT.", 325, totalsY + 96, { width: 220, align: "right" });
+    }
 
     doc.fillColor("#737b8c").font("Helvetica").fontSize(8).text(value(issuer.invoiceFooter, "Thank you for your business."), 50, 690, { width: 495, align: "center" });
     doc.end();

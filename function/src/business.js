@@ -15,6 +15,15 @@ export function projectNumber(year, value, padding = 4) {
   return `PRJ-${year}-${String(value).padStart(padding, "0")}`;
 }
 
+export function invoiceDueDate(issueDate, paymentTermsDays) {
+  const date = new Date(`${issueDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) throw new Error("Invalid invoice issue date.");
+  const terms = Number(paymentTermsDays);
+  if (!Number.isInteger(terms) || terms < 0 || terms > 3650) throw new Error("Invalid customer payment terms.");
+  date.setUTCDate(date.getUTCDate() + terms);
+  return date.toISOString().slice(0, 10);
+}
+
 export function cleanText(value, name, maxLength, required = false) {
   const result = typeof value === "string" ? value.trim() : "";
   if (required && !result) throw new Error(`${name} is required.`);

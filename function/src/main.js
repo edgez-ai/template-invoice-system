@@ -327,8 +327,9 @@ async function getPublicInvoice(tables, body) {
   }
   const latestRevision = revisions.reduce((latest, candidate) => Number(candidate.revision) > Number(latest.revision) ? candidate : latest, selectedRevision);
   const customer = await tables.getRow({ databaseId: DATABASE_ID, tableId: "companies", rowId: project.companyId });
+  const details = parseJson(project.detailsJson, {});
   return {
-    project: { projectNumber: project.projectNumber, name: project.name, description: project.description, status: project.status, currency: project.currency },
+    project: { projectNumber: project.projectNumber, name: project.name, description: project.description, scope: details.scope || "", status: project.status, currency: project.currency },
     customer: { name: customer.name, legalName: customer.legalName },
     invoice: { number: invoice.number, status: invoice.status, stageId: invoice.stageId },
     selectedRevision: { ...selectedRevision, fileId: undefined, publicToken: undefined },

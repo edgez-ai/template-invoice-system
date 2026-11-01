@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { functions, workflowFunctionId } from "../lib/appwrite";
 
 type PublicInvoiceData = {
-  project: { projectNumber: string; name: string; description?: string; status: string; currency: string };
+  project: { projectNumber: string; name: string; description?: string; scope?: string; status: string; currency: string };
   customer: { name: string; legalName?: string };
   invoice: { number: string; status: string; stageId: string };
   selectedRevision: {
@@ -62,7 +62,7 @@ export default function PublicInvoice({ projectId, invoiceId, revision, publicTo
         <article><small>INVOICE STAGE</small><strong>{currentStage?.name || "Payment stage"}</strong><span>{currentStage?.description || "Project payment"}</span></article>
         <article><small>TOTAL</small><strong>{money(data.selectedRevision.totalMinor, data.project.currency)}</strong><span>Due {date(data.selectedRevision.dueDate)}</span></article>
       </div>
-      <section className="public-project-detail"><div><p className="eyebrow">PROJECT DETAIL</p><h2>{data.project.name}</h2><p>{data.project.description || "No public project description has been provided."}</p></div><span className={`status status-${data.project.status.replaceAll("_", "-")}`}>{data.project.status.replaceAll("_", " ")}</span></section>
+      <section className="public-project-detail"><div><p className="eyebrow">PROJECT DETAIL</p><h2>{data.project.name}</h2><p>{data.project.description || "No public project description has been provided."}</p>{data.project.scope && <div className="public-project-scope"><h3>Scope</h3><p>{data.project.scope}</p></div>}</div><span className={`status status-${data.project.status.replaceAll("_", "-")}`}>{data.project.status.replaceAll("_", " ")}</span></section>
       <section className="public-stage-section"><div className="section-heading"><div><h3>Payment stages</h3><p>The stage for this invoice revision is highlighted.</p></div></div><div className="public-stage-list">{data.stages.map((stage) => <article key={stage.id} className={stage.id === data.invoice.stageId ? "current" : ""}><span className="stage-marker">{stage.id === data.invoice.stageId ? "●" : "○"}</span><div><strong>{stage.name}</strong><small>{stage.description || "Project payment stage"}</small></div><div><strong>{money(stage.amountMinor, data.project.currency)}</strong><small>{stage.invoiceStatus.replaceAll("_", " ")}</small></div></article>)}</div></section>
       <footer className="public-invoice-footer"><span>Generated {date(data.selectedRevision.generatedAt)}</span><span>Issue date {date(data.selectedRevision.issueDate)}</span><span>Status: {data.invoice.status}</span></footer>
     </section>

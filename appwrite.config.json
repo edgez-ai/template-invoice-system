@@ -1,6 +1,12 @@
 {
   "projectId": "invoice-system",
   "endpoint": "https://appwrite.edgez.ai/v1",
+  "teams": [
+    {
+      "$id": "invoice-staff",
+      "name": "Invoice staff"
+    }
+  ],
   "functions": [
     {
       "$id": "invoice-workflows",
@@ -79,7 +85,10 @@
         { "key": "status", "type": "varchar", "size": 24, "required": true },
         { "key": "ownerUserId", "type": "varchar", "size": 36, "required": false },
         { "key": "billingEmail", "type": "varchar", "size": 320, "required": false },
+        { "key": "phone", "type": "varchar", "size": 50, "required": false },
         { "key": "billingAddress", "type": "varchar", "size": 1000, "required": false },
+        { "key": "invoiceFooter", "type": "text", "required": false },
+        { "key": "isOwnCompany", "type": "boolean", "required": false },
         { "key": "currency", "type": "varchar", "size": 3, "required": true },
         { "key": "paymentTermsDays", "type": "integer", "min": 0, "max": 365, "required": true },
         { "key": "notes", "type": "varchar", "size": 5000, "required": false },

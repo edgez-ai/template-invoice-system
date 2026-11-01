@@ -2,7 +2,8 @@ import type { Models } from "appwrite";
 
 export type Company = Models.Row & {
   name: string; legalName?: string; taxNumber?: string; website?: string; industry?: string;
-  status: string; ownerUserId?: string; billingEmail?: string; billingAddress?: string;
+  status: string; ownerUserId?: string; billingEmail?: string; phone?: string; billingAddress?: string;
+  invoiceFooter?: string; isOwnCompany?: boolean;
   currency: string; paymentTermsDays: number; notes?: string; tags?: string[];
 };
 
@@ -29,4 +30,4 @@ export type Project = Models.Row & {
   description?: string; status: string; ownerUserId: string; currency: string; contractValueMinor: number;
 };
 
-export type Section = "dashboard" | "companies" | "contacts" | "pipeline" | "projects" | "finance";
+export type Section = "dashboard" | "companies" | "contacts" | "pipeline" | "projects" | "finance" | "settings";

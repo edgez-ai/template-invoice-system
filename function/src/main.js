@@ -1,6 +1,6 @@
 import { Client, ID, Permission, Query, Role, Storage, TablesDB } from "node-appwrite";
 import { InputFile } from "node-appwrite/file";
-import { cleanText, invoiceDueDate, parseActionBody, projectNumber, safeJson } from "./business.js";
+import { assertInvoiceRegenerable, cleanText, invoiceDueDate, parseActionBody, projectNumber, safeJson } from "./business.js";
 import { renderInvoicePdf } from "./invoice-pdf.js";
 
 const DATABASE_ID = process.env.INVOICE_DATABASE_ID || "invoice-system";
@@ -33,6 +33,19 @@ function requireRole(membership, allowed) {
   if (!membership || !membership.roles?.some((role) => allowed.includes(role))) {
     throw Object.assign(new Error("Your staff role cannot perform this action."), { status: 403 });
   }
+}
+
+function requestOrigin(req, body) {
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const forwardedProto = req.headers["x-forwarded-proto"] || "https";
+  const candidates = [body.publicOrigin, req.headers.origin, forwardedHost ? `${forwardedProto}://${forwardedHost}` : ""];
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate);
+      if (["http:", "https:"].includes(url.protocol)) return url.origin;
+    } catch {}
+  }
+  throw new Error("Could not determine the public invoice site URL.");
 }
 
 async function ledgerColumns(tables) {
@@ -211,7 +224,7 @@ async function addStage(tables, actorUserId, body) {
   return stage;
 }
 
-async function generateInvoice(tables, storage, actorUserId, body) {
+async function generateInvoice(tables, storage, actorUserId, body, req) {
   const projectId = cleanText(body.projectId, "Project ID", 36, true);
   const stageId = cleanText(body.stageId, "Stage ID", 36, true);
   const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
@@ -223,21 +236,47 @@ async function generateInvoice(tables, storage, actorUserId, body) {
   const commercial = commercialOf(project);
   const stage = commercial.stages.find((candidate) => candidate.id === stageId);
   if (!stage) throw new Error("Payment stage was not found.");
-  if (stage.invoiceId) throw new Error("This stage already has an invoice.");
+  const existingInvoice = stage.invoiceId
+    ? commercial.invoices.find((candidate) => candidate.id === stage.invoiceId)
+    : null;
+  if (stage.invoiceId && !existingInvoice) throw new Error("The stage invoice record is incomplete.");
+  if (existingInvoice) assertInvoiceRegenerable(existingInvoice.status);
   const details = parseJson(project.detailsJson, {});
   const reverseVat = details.reverseVat === true;
   const vatRateBasisPoints = vatRateOf(issuer);
   const issueDate = new Date().toISOString().slice(0, 10);
   const dueDate = invoiceDueDate(issueDate, customer.paymentTermsDays);
   const vatMinor = reverseVat ? 0 : Math.round(stage.amountMinor * vatRateBasisPoints / 10000);
-  const invoice = {
+  const previousFileId = existingInvoice?.fileId || "";
+  const revision = existingInvoice ? Number(existingInvoice.revision || 1) + 1 : 1;
+  const publicToken = crypto.randomUUID();
+  const publicUrl = `${requestOrigin(req, body)}/invoice/${projectId}/${existingInvoice?.id || "pending"}/${revision}/${publicToken}/`;
+  const revisions = Array.isArray(existingInvoice?.revisions) ? [...existingInvoice.revisions] : [];
+  if (existingInvoice && previousFileId && !revisions.some((item) => item.fileId === previousFileId)) {
+    revisions.push({
+      revision: Number(existingInvoice.revision || 1), fileId: previousFileId,
+      generatedAt: existingInvoice.generatedAt || existingInvoice.createdAt || `${existingInvoice.issueDate}T00:00:00.000Z`,
+      issueDate: existingInvoice.issueDate, dueDate: existingInvoice.dueDate,
+      subtotalMinor: existingInvoice.subtotalMinor, vatMinor: existingInvoice.vatMinor,
+      totalMinor: existingInvoice.totalMinor, vatRateBasisPoints: existingInvoice.vatRateBasisPoints,
+      reverseVat: existingInvoice.reverseVat === true, status: existingInvoice.status,
+      publicToken: existingInvoice.publicToken, publicUrl: existingInvoice.publicUrl,
+    });
+  }
+  const invoice = existingInvoice || {
     id: crypto.randomUUID(), number: await nextDocumentNumber(tables, "invoice", "INV"), stageId,
-    fileId: "", issueDate, dueDate, subtotalMinor: stage.amountMinor, vatRateBasisPoints, reverseVat,
-    vatMinor, totalMinor: stage.amountMinor + vatMinor, status: "issued", createdBy: actorUserId,
+    createdAt: new Date().toISOString(), createdBy: actorUserId,
   };
+  const revisionPublicUrl = publicUrl.replace("/pending/", `/${invoice.id}/`);
+  Object.assign(invoice, {
+    fileId: "", issueDate, dueDate, subtotalMinor: stage.amountMinor, vatRateBasisPoints, reverseVat,
+    vatMinor, totalMinor: stage.amountMinor + vatMinor, status: "issued",
+    revision, revisions, generatedAt: new Date().toISOString(), generatedBy: actorUserId,
+    publicToken, publicUrl: revisionPublicUrl,
+  });
   const pdf = await renderInvoicePdf({ issuer, customer, project, stage, invoice });
   const fileId = ID.unique();
-  const fileName = `${invoice.number}.pdf`;
+  const fileName = `${invoice.number}-r${revision}.pdf`;
   const permissions = [
     Permission.read(Role.team(STAFF_TEAM_ID)),
     Permission.update(Role.team(STAFF_TEAM_ID, "admin")),
@@ -247,8 +286,20 @@ async function generateInvoice(tables, storage, actorUserId, body) {
   const file = await storage.createFile({ bucketId: FILES_BUCKET_ID, fileId,
     file: InputFile.fromBuffer(pdf, fileName), permissions });
   invoice.fileId = file.$id;
-  commercial.invoices.push(invoice);
+  invoice.revisions.push({
+    revision, fileId: file.$id, generatedAt: invoice.generatedAt, issueDate, dueDate,
+    subtotalMinor: invoice.subtotalMinor, vatMinor: invoice.vatMinor, totalMinor: invoice.totalMinor,
+    vatRateBasisPoints, reverseVat, status: invoice.status, publicToken, publicUrl: revisionPublicUrl,
+  });
+  if (!existingInvoice) commercial.invoices.push(invoice);
   stage.status = "invoiced"; stage.invoiceId = invoice.id;
+  if (previousFileId) {
+    const previousRows = await tables.listRows({ databaseId: DATABASE_ID, tableId: "files",
+      queries: [Query.equal("fileId", previousFileId), Query.limit(1)] });
+    const previousRow = previousRows.rows?.[0];
+    if (previousRow) await tables.updateRow({ databaseId: DATABASE_ID, tableId: "files", rowId: previousRow.$id,
+      data: { category: "invoice-revision" } });
+  }
   await tables.createRow({ databaseId: DATABASE_ID, tableId: "files", rowId: ID.unique(), data: {
     fileId: file.$id, folder: `projects/${projectId}/invoices/`, entityType: "project", entityId: projectId,
     category: "invoice", originalName: fileName, mimeType: file.mimeType || "application/pdf",
@@ -259,17 +310,51 @@ async function generateInvoice(tables, storage, actorUserId, body) {
   return invoice;
 }
 
+async function getPublicInvoice(tables, body) {
+  const projectId = cleanText(body.projectId, "Project ID", 36, true);
+  const invoiceId = cleanText(body.invoiceId, "Invoice ID", 36, true);
+  const publicToken = cleanText(body.publicToken, "Public token", 64, true);
+  const revisionNumber = Number(body.revision);
+  if (!Number.isInteger(revisionNumber) || revisionNumber < 1) throw Object.assign(new Error("Invalid invoice revision."), { status: 400 });
+  const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
+  const commercial = commercialOf(project);
+  const invoice = commercial.invoices.find((candidate) => candidate.id === invoiceId);
+  if (!invoice) throw Object.assign(new Error("Invoice not found."), { status: 404 });
+  const revisions = Array.isArray(invoice.revisions) ? invoice.revisions : [];
+  const selectedRevision = revisions.find((candidate) => Number(candidate.revision) === revisionNumber);
+  if (!selectedRevision || selectedRevision.publicToken !== publicToken) {
+    throw Object.assign(new Error("Invoice revision not found."), { status: 404 });
+  }
+  const latestRevision = revisions.reduce((latest, candidate) => Number(candidate.revision) > Number(latest.revision) ? candidate : latest, selectedRevision);
+  const customer = await tables.getRow({ databaseId: DATABASE_ID, tableId: "companies", rowId: project.companyId });
+  return {
+    project: { projectNumber: project.projectNumber, name: project.name, description: project.description, status: project.status, currency: project.currency },
+    customer: { name: customer.name, legalName: customer.legalName },
+    invoice: { number: invoice.number, status: invoice.status, stageId: invoice.stageId },
+    selectedRevision: { ...selectedRevision, fileId: undefined, publicToken: undefined },
+    latestRevision: Number(latestRevision.revision),
+    latestUrl: latestRevision.publicUrl || "",
+    superseded: revisionNumber < Number(latestRevision.revision),
+    stages: commercial.stages.map((candidate) => ({
+      id: candidate.id, name: candidate.name, description: candidate.description,
+      amountMinor: candidate.amountMinor, status: candidate.status,
+      invoiceStatus: commercial.invoices.find((item) => item.id === candidate.invoiceId)?.status || "not_invoiced",
+    })),
+  };
+}
+
 export default async ({ req, res, log, error }) => {
   const requestId = req.headers["x-appwrite-execution-id"] || crypto.randomUUID();
   try {
-    const userId = req.headers["x-appwrite-user-id"];
-    if (!userId) return res.json({ ok: false, error: "Authentication required." }, 401);
-    const membership = await membershipFor(req, userId);
-    if (!membership) return res.json({ ok: false, error: "Confirmed staff membership required." }, 403);
     const body = parseActionBody(req.bodyText || req.body);
     const action = cleanText(body.action, "Action", 80, true);
     const client = serverClient(req);
     const tables = new TablesDB(client);
+    if (action === "invoice.public.get") return res.json({ ok: true, publicInvoice: await getPublicInvoice(tables, body) });
+    const userId = req.headers["x-appwrite-user-id"];
+    if (!userId) return res.json({ ok: false, error: "Authentication required." }, 401);
+    const membership = await membershipFor(req, userId);
+    if (!membership) return res.json({ ok: false, error: "Confirmed staff membership required." }, 403);
     const storage = new Storage(client);
 
     if (action === "health") return res.json({ ok: true, userId, roles: membership.roles });
@@ -289,7 +374,7 @@ export default async ({ req, res, log, error }) => {
     }
     if (action === "project.invoice.generate") {
       requireRole(membership, ["admin", "sales", "finance"]);
-      return res.json({ ok: true, invoice: await generateInvoice(tables, storage, userId, body) });
+      return res.json({ ok: true, invoice: await generateInvoice(tables, storage, userId, body, req) });
     }
     return res.json({ ok: false, error: "Unknown action." }, 404);
   } catch (caught) {

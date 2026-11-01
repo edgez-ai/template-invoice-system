@@ -15,7 +15,7 @@
       "path": "function",
       "entrypoint": "src/main.js",
       "commands": "npm ci",
-      "execute": ["users"],
+      "execute": ["any"],
       "events": [],
       "schedule": "",
       "timeout": 30,

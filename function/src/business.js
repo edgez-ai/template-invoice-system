@@ -24,6 +24,10 @@ export function invoiceDueDate(issueDate, paymentTermsDays) {
   return date.toISOString().slice(0, 10);
 }
 
+export function assertInvoiceRegenerable(status) {
+  if (status === "paid") throw new Error("A paid invoice cannot be regenerated.");
+}
+
 export function cleanText(value, name, maxLength, required = false) {
   const result = typeof value === "string" ? value.trim() : "";
   if (required && !result) throw new Error(`${name} is required.`);

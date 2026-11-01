@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AuthenticationFactor, ID, Permission, Query, Role, type Models } from "appwrite";
 import { account, databaseId, filesBucketId, functions, staffTeamId, storage, tables, teams, workflowFunctionId } from "../lib/appwrite";
-import type { Activity, Company, Contact, FileMetadata, Interest, PaymentStage, Project, ProjectInvoice, Section } from "../lib/types";
+import type { Activity, Company, Contact, FileMetadata, Interest, InvoiceRevision, PaymentStage, Project, ProjectInvoice, Section } from "../lib/types";
+import PublicInvoice from "./PublicInvoice";
 
 type AuthStep = "checking" | "login" | "mfa" | "enroll" | "ready";
 type Modal = "company" | "contact" | "interest" | "activity" | null;
@@ -47,6 +48,23 @@ function projectDetails(project?: Project) {
 function projectCommercial(project?: Project): { stages: PaymentStage[]; invoices: ProjectInvoice[] } {
   const value = parseJson(project?.commercialJson, { stages: [], invoices: [] });
   return { stages: Array.isArray(value.stages) ? value.stages : [], invoices: Array.isArray(value.invoices) ? value.invoices : [] };
+}
+
+function invoiceRevisions(invoice: ProjectInvoice): InvoiceRevision[] {
+  if (invoice.revisions?.length) return [...invoice.revisions].sort((left, right) => right.revision - left.revision);
+  return [{
+    revision: invoice.revision || 1,
+    fileId: invoice.fileId,
+    generatedAt: invoice.generatedAt || `${invoice.issueDate}T00:00:00.000Z`,
+    issueDate: invoice.issueDate,
+    dueDate: invoice.dueDate,
+    subtotalMinor: invoice.subtotalMinor,
+    vatMinor: invoice.vatMinor,
+    totalMinor: invoice.totalMinor,
+    vatRateBasisPoints: invoice.vatRateBasisPoints,
+    reverseVat: invoice.reverseVat,
+    status: invoice.status,
+  }];
 }
 
 function vatRateBasisPoints(company?: Company) {
@@ -168,6 +186,15 @@ function ModalShell({ title, subtitle, onClose, children }: { title: string; sub
 }
 
 export default function InvoiceApp() {
+  const [pathname, setPathname] = useState("");
+  useEffect(() => { setPathname(window.location.pathname); }, []);
+  if (!pathname) return <main className="center-page"><div className="loading-mark">L</div></main>;
+  const publicMatch = pathname.match(/^\/invoice\/([^/]+)\/([^/]+)\/(\d+)\/([^/]+)\/?$/);
+  if (publicMatch) return <PublicInvoice projectId={publicMatch[1]} invoiceId={publicMatch[2]} revision={Number(publicMatch[3])} publicToken={publicMatch[4]} />;
+  return <PrivateInvoiceApp />;
+}
+
+function PrivateInvoiceApp() {
   const [authStep, setAuthStep] = useState<AuthStep>("checking");
   const [challengeId, setChallengeId] = useState("");
   const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
@@ -374,8 +401,9 @@ export default function InvoiceApp() {
     if (!selectedProjectId) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await runWorkflow({ action: "project.invoice.generate", projectId: selectedProjectId, stageId });
-      await loadWorkspace(); setNotice(`Invoice ${result.invoice.number} generated as a PDF.`);
+      const result = await runWorkflow({ action: "project.invoice.generate", projectId: selectedProjectId, stageId, publicOrigin: window.location.origin });
+      await loadWorkspace();
+      setNotice(`Invoice ${result.invoice.number} ${result.invoice.revision > 1 ? "regenerated" : "generated"} as PDF revision ${result.invoice.revision}.`);
     } catch (caught) { setError(messageOf(caught)); } finally { setBusy(false); }
   }
 
@@ -478,9 +506,21 @@ export default function InvoiceApp() {
         </section>
         <section className="detail-section"><div className="section-heading"><div><h3>Payment stages</h3><p>Invoice due dates are calculated from the generation date plus the customer payment terms.</p></div></div>
           <form className="stage-form" onSubmit={addPaymentStage}><Field label="Stage name"><input name="name" placeholder="e.g. Deposit" required /></Field><Field label={`Amount (${selectedProject.currency})`}><input name="amount" type="number" min="0.01" step="0.01" required /></Field><Field label="Description"><textarea name="description" rows={2} /></Field><button className="secondary" disabled={busy}>+ Add stage</button></form>
-          <div className="stage-list">{selectedProjectCommercial.stages.map((stage) => { const invoice = selectedProjectCommercial.invoices.find((item) => item.stageId === stage.id); return <article key={stage.id}><div><strong>{stage.name}</strong><small>{stage.description || "Payment stage"}</small></div><div className="stage-amount"><strong>{currency(stage.amountMinor, selectedProject.currency)}</strong><small>{selectedProjectDetails.reverseVat ? "Reverse VAT" : `+ ${(vatRateBasisPoints(ownCompany) / 100).toFixed(2)}% VAT`}</small></div>{invoice ? <a className="download-button" href={storage.getFileDownload({ bucketId: filesBucketId, fileId: invoice.fileId })} target="_blank" rel="noreferrer">Download PDF</a> : <button className="primary" onClick={() => void generateInvoice(stage.id)} disabled={busy}>Generate invoice</button>}</article>; })}{!selectedProjectCommercial.stages.length && <p className="muted">No payment stages yet.</p>}</div>
+          <div className="stage-list">{selectedProjectCommercial.stages.map((stage) => { const invoice = selectedProjectCommercial.invoices.find((item) => item.stageId === stage.id); return <article key={stage.id}><div><strong>{stage.name}</strong><small>{stage.description || "Payment stage"}</small></div><div className="stage-amount"><strong>{currency(stage.amountMinor, selectedProject.currency)}</strong><small>{selectedProjectDetails.reverseVat ? "Reverse VAT" : `+ ${(vatRateBasisPoints(ownCompany) / 100).toFixed(2)}% VAT`}</small></div>{invoice ? <div className="invoice-stage-actions"><button type="button" className="secondary" onClick={() => void generateInvoice(stage.id)} disabled={busy || invoice.status === "paid"}>{invoice.status === "paid" ? "Paid · locked" : "Regenerate PDF"}</button><a className="download-button" href={storage.getFileDownload({ bucketId: filesBucketId, fileId: invoice.fileId })} target="_blank" rel="noreferrer">Download PDF</a></div> : <button type="button" className="primary" onClick={() => void generateInvoice(stage.id)} disabled={busy}>Generate invoice</button>}</article>; })}{!selectedProjectCommercial.stages.length && <p className="muted">No payment stages yet.</p>}</div>
         </section>
-        {!!selectedProjectCommercial.invoices.length && <section className="detail-section"><div className="section-heading"><div><h3>Invoices</h3><p>Generated PDF documents and their current status.</p></div></div><div className="invoice-list">{selectedProjectCommercial.invoices.map((invoice) => <a key={invoice.id} href={storage.getFileDownload({ bucketId: filesBucketId, fileId: invoice.fileId })} target="_blank" rel="noreferrer"><span><strong>{invoice.number}</strong><small>Issued {shortDate(invoice.issueDate)} · {invoice.status}</small></span><strong>{currency(invoice.totalMinor, selectedProject.currency)} ↧</strong></a>)}</div></section>}
+        {!!selectedProjectCommercial.invoices.length && <section className="detail-section">
+          <div className="section-heading"><div><h3>Invoices</h3><p>Every generated PDF is retained as an immutable revision.</p></div></div>
+          <div className="invoice-history">{selectedProjectCommercial.invoices.map((invoice) => {
+            const revisions = invoiceRevisions(invoice);
+            const latestRevision = revisions[0]?.revision || 1;
+            return <article className="invoice-history-card" key={invoice.id}>
+              <header><span><strong>{invoice.number}</strong><small>Issued {shortDate(invoice.issueDate)} · {invoice.status}</small></span><strong>{currency(invoice.totalMinor, selectedProject.currency)}</strong></header>
+              <div className="revision-list">{revisions.map((revision) => <a key={`${invoice.id}-${revision.revision}-${revision.fileId}`} href={storage.getFileDownload({ bucketId: filesBucketId, fileId: revision.fileId })} target="_blank" rel="noreferrer">
+                <span><strong>Revision {revision.revision}{revision.revision === latestRevision ? " · Current" : ""}</strong><small>Generated {shortDate(revision.generatedAt)} · Due {shortDate(revision.dueDate)} · {currency(revision.totalMinor, selectedProject.currency)}</small></span><span>Download PDF ↧</span>
+              </a>)}</div>
+            </article>;
+          })}</div>
+        </section>}
       </div>
     </ModalShell>}
     {modal === "company" && <ModalShell title="Add a company" subtitle="Create the customer record that contacts and projects will use." onClose={() => setModal(null)}><form className="form-grid" onSubmit={createCompany}><Field label="Company name"><input name="name" required /></Field><Field label="Legal name"><input name="legalName" /></Field><Field label="Billing email"><input name="billingEmail" type="email" /></Field><Field label="Tax / registration number"><input name="taxNumber" /></Field><Field label="Industry"><input name="industry" /></Field><Field label="Website"><input name="website" type="url" /></Field><Field label="Currency"><input name="currency" defaultValue="USD" maxLength={3} required /></Field><Field label="Payment terms"><select name="paymentTermsDays" defaultValue="30"><option value="0">Due immediately</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option></select></Field><Field label="Billing address"><textarea name="billingAddress" rows={3} /></Field><Field label="Notes"><textarea name="notes" rows={3} /></Field><FormActions busy={busy} onCancel={() => setModal(null)} /></form></ModalShell>}

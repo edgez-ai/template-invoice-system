@@ -44,7 +44,15 @@ export type PaymentStage = {
 export type ProjectInvoice = {
   id: string; number: string; stageId: string; fileId: string; issueDate: string; dueDate?: string;
   subtotalMinor: number; vatMinor: number; totalMinor: number; vatRateBasisPoints?: number;
-  reverseVat?: boolean; status: "issued" | "paid" | "void";
+  reverseVat?: boolean; revision?: number; generatedAt?: string; publicToken?: string; publicUrl?: string;
+  revisions?: InvoiceRevision[];
+  status: "issued" | "paid" | "void";
+};
+
+export type InvoiceRevision = {
+  revision: number; fileId: string; generatedAt: string; issueDate: string; dueDate?: string;
+  subtotalMinor: number; vatMinor: number; totalMinor: number; vatRateBasisPoints?: number;
+  reverseVat?: boolean; status: string; publicToken?: string; publicUrl?: string;
 };
 
 export type Section = "dashboard" | "companies" | "contacts" | "pipeline" | "projects" | "finance" | "settings";

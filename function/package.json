@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "node-appwrite": "^20.0.0",
-    "pdfkit": "^0.17.2"
+    "pdfkit": "^0.17.2",
+    "qrcode": "^1.5.4"
   }
 }

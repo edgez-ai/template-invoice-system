@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 
 function money(amountMinor, currency) {
   return new Intl.NumberFormat("en", { style: "currency", currency }).format(amountMinor / 100);
@@ -13,7 +14,10 @@ function trademarkWordmark(name) {
   return /[®℠™]$/.test(wordmark) ? wordmark : `${wordmark}™`;
 }
 
-export function renderInvoicePdf({ issuer, customer, project, stage, invoice }) {
+export async function renderInvoicePdf({ issuer, customer, project, stage, invoice }) {
+  const qrCode = invoice.publicUrl
+    ? await QRCode.toBuffer(invoice.publicUrl, { type: "png", errorCorrectionLevel: "M", margin: 1, width: 280 })
+    : null;
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 50, info: { Title: `Invoice ${invoice.number}` } });
     const chunks = [];
@@ -31,6 +35,8 @@ export function renderInvoicePdf({ issuer, customer, project, stage, invoice }) 
     }
     doc.fillColor("#6657d9").fontSize(11).text("INVOICE", 410, 52, { width: 135, align: "right" });
     doc.fillColor("#17243e").fontSize(16).text(invoice.number, 360, 70, { width: 185, align: "right" });
+    doc.fillColor("#737b8c").font("Helvetica").fontSize(8)
+      .text(`Revision ${invoice.revision || 1}`, 410, 91, { width: 135, align: "right" });
     doc.moveTo(50, 105).lineTo(545, 105).strokeColor("#dfe1e7").stroke();
 
     doc.fillColor("#737b8c").font("Helvetica-Bold").fontSize(8).text("FROM", 50, 128);
@@ -74,7 +80,13 @@ export function renderInvoicePdf({ issuer, customer, project, stage, invoice }) 
         .text("Reverse charge: customer to account for VAT.", 325, totalsY + 96, { width: 220, align: "right" });
     }
 
-    doc.fillColor("#737b8c").font("Helvetica").fontSize(8).text(value(issuer.invoiceFooter, "Thank you for your business."), 50, 690, { width: 495, align: "center" });
+    if (qrCode) {
+      doc.image(qrCode, 50, 610, { fit: [68, 68] });
+      doc.fillColor("#1c2230").font("Helvetica-Bold").fontSize(8).text("VERIFY THIS INVOICE", 130, 620);
+      doc.fillColor("#737b8c").font("Helvetica").fontSize(7)
+        .text("Scan to verify this invoice and view its current revision.", 130, 636, { width: 210, lineGap: 2 });
+    }
+    doc.fillColor("#737b8c").font("Helvetica").fontSize(8).text(value(issuer.invoiceFooter, "Thank you for your business."), 50, 710, { width: 495, align: "center" });
     doc.end();
   });
 }

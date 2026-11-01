@@ -43,6 +43,7 @@ export async function renderInvoicePdf({ issuer, customer, project, stage, invoi
     doc.fillColor("#1c2230").font("Helvetica-Bold").fontSize(11).text(value(issuer.legalName, issuer.name), 50, 145);
     doc.font("Helvetica").fontSize(9).fillColor("#4f5868").text(value(issuer.billingAddress, ""), 50, 161, { width: 210 });
     doc.text([issuer.billingEmail, issuer.phone].filter(Boolean).join(" · "), 50, doc.y + 4, { width: 210 });
+    if (issuer.taxNumber) doc.text(`Registration no.: ${issuer.taxNumber}`, 50, doc.y + 3);
     if (issuer.vatNumber) doc.text(`VAT: ${issuer.vatNumber}`, 50, doc.y + 3);
 
     doc.fillColor("#737b8c").font("Helvetica-Bold").fontSize(8).text("BILL TO", 310, 128);

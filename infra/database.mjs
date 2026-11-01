@@ -27,6 +27,10 @@ export function installDatabase() {
     for (const permission of table.permissions || []) create.push("--permissions", permission);
     if (table.rowSecurity) create.push("--row-security");
     ensure(`${table.$id} table`, ["tables-db", "get-table", ...common], create);
+    const update = ["tables-db", "update-table", ...common, "--name", table.name];
+    for (const permission of table.permissions || []) update.push("--permissions", permission);
+    if (table.rowSecurity) update.push("--row-security");
+    run(update);
 
     for (const column of table.columns || []) {
       ensure(`${table.$id}.${column.key} column`,

@@ -308,10 +308,12 @@ Application metadata for each Storage file: `bucketId`, `fileId`, `folder`,
 
 Indexes: unique `fileId`, `entityType + entityId`, and `category`.
 
-#### `number_sequences`
+#### System ledger (`number-sequences` resource ID)
 
-`key`, `prefix`, `year`, `nextValue`, `padding`, `updatedAt`. Only the Function
-may access this table. It generates collision-free numbers such as
+The EdgeZ shared TablesDB tier supports seven tables per database, so internal
+number counters and audit entries share one Function-owned ledger table. Its
+stable resource ID remains `number-sequences` so a partially completed initial
+deployment can be upgraded in place. Sequence rows generate numbers such as
 `PRJ-2026-0001`, `QUO-2026-0001`, and `INV-2026-0001`.
 
 #### `settings`
@@ -319,11 +321,9 @@ may access this table. It generates collision-free numbers such as
 Keyed business settings and document defaults. Only administrators write it.
 Sensitive provider credentials remain Function secrets, never table values.
 
-#### `audit_logs`
-
-Append-only: `actorUserId`, `action`, `entityType`, `entityId`, `beforeJson`,
-`afterJson`, `requestId`, `createdAt`. The Function writes it; staff can read it
-according to role.
+Audit rows in the same ledger are append-only: `actorUserId`, `action`,
+`entityType`, `entityId`, `beforeJson`, `afterJson`, `requestId`, `createdAt`.
+The Function writes them; administrators can read them.
 
 ## 6. Files and document storage
 

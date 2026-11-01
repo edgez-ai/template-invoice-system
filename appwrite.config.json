@@ -213,20 +213,13 @@
       ]
     },
     {
-      "$id": "number-sequences", "databaseId": "invoice-system", "name": "Number sequences",
-      "permissions": [], "rowSecurity": false, "enabled": true,
+      "$id": "number-sequences", "databaseId": "invoice-system", "name": "System ledger",
+      "permissions": ["read(\"team:invoice-staff/admin\")"], "rowSecurity": false, "enabled": true,
       "columns": [
         { "key": "prefix", "type": "varchar", "size": 12, "required": true },
         { "key": "year", "type": "integer", "min": 2000, "max": 2200, "required": true },
         { "key": "nextValue", "type": "integer", "min": 1, "required": true },
-        { "key": "padding", "type": "integer", "min": 1, "max": 12, "required": true }
-      ],
-      "indexes": []
-    },
-    {
-      "$id": "audit-logs", "databaseId": "invoice-system", "name": "Audit logs",
-      "permissions": ["read(\"team:invoice-staff/admin\")"], "rowSecurity": false, "enabled": true,
-      "columns": [
+        { "key": "padding", "type": "integer", "min": 1, "max": 12, "required": true },
         { "key": "actorUserId", "type": "varchar", "size": 36, "required": true },
         { "key": "action", "type": "varchar", "size": 80, "required": true },
         { "key": "entityType", "type": "varchar", "size": 32, "required": true },
@@ -237,8 +230,8 @@
         { "key": "createdAt", "type": "datetime", "required": true }
       ],
       "indexes": [
-        { "key": "audit-entity-time", "type": "key", "attributes": ["entityType", "entityId", "createdAt"], "orders": ["ASC", "ASC", "DESC"] },
-        { "key": "audit-request", "type": "unique", "attributes": ["requestId"] }
+        { "key": "ledger-entity-time", "type": "key", "attributes": ["entityType", "entityId", "createdAt"], "orders": ["ASC", "ASC", "DESC"] },
+        { "key": "ledger-request", "type": "unique", "attributes": ["requestId"] }
       ]
     }
   ]

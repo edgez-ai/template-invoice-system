@@ -3,6 +3,7 @@ import { cleanText, parseActionBody, projectNumber, safeJson } from "./business.
 
 const DATABASE_ID = process.env.INVOICE_DATABASE_ID || "invoice-system";
 const STAFF_TEAM_ID = process.env.INVOICE_STAFF_TEAM_ID || "invoice-staff";
+const LEDGER_TABLE_ID = "number-sequences";
 
 function serverClient(req) {
   return new Client()
@@ -35,22 +36,27 @@ async function nextProjectNumber(tables) {
   const rowId = `project-${year}`;
   let sequence;
   try {
-    sequence = await tables.getRow({ databaseId: DATABASE_ID, tableId: "number-sequences", rowId });
+    sequence = await tables.getRow({ databaseId: DATABASE_ID, tableId: LEDGER_TABLE_ID, rowId });
   } catch (error) {
     if ((error?.code ?? error?.status) !== 404) throw error;
     sequence = await tables.createRow({
       databaseId: DATABASE_ID,
-      tableId: "number-sequences",
+      tableId: LEDGER_TABLE_ID,
       rowId,
-      data: { prefix: "PRJ", year, nextValue: 1, padding: 4 },
+      data: {
+        prefix: "PRJ", year, nextValue: 1, padding: 4,
+        actorUserId: "system", action: "sequence.project", entityType: "system",
+        entityId: rowId, beforeJson: "", afterJson: JSON.stringify({ nextValue: 1 }),
+        requestId: rowId, createdAt: new Date().toISOString(),
+      },
     });
   }
   const number = projectNumber(sequence.year, sequence.nextValue, sequence.padding);
   await tables.updateRow({
     databaseId: DATABASE_ID,
-    tableId: "number-sequences",
+    tableId: LEDGER_TABLE_ID,
     rowId,
-    data: { nextValue: sequence.nextValue + 1 },
+    data: { nextValue: sequence.nextValue + 1, afterJson: JSON.stringify({ nextValue: sequence.nextValue + 1 }) },
   });
   return number;
 }
@@ -58,9 +64,10 @@ async function nextProjectNumber(tables) {
 async function audit(tables, actorUserId, action, entityType, entityId, before, after, requestId) {
   await tables.createRow({
     databaseId: DATABASE_ID,
-    tableId: "audit-logs",
+    tableId: LEDGER_TABLE_ID,
     rowId: ID.unique(),
     data: {
+      prefix: "AUDIT", year: new Date().getUTCFullYear(), nextValue: 1, padding: 1,
       actorUserId, action, entityType, entityId,
       beforeJson: safeJson(before), afterJson: safeJson(after),
       requestId, createdAt: new Date().toISOString(),

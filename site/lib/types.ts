@@ -1,7 +1,7 @@
 import type { Models } from "appwrite";
 
 export type Company = Models.Row & {
-  name: string; legalName?: string; taxNumber?: string; website?: string; industry?: string;
+  name: string; legalName?: string; taxNumber?: string; vatNumber?: string; website?: string; industry?: string;
   status: string; ownerUserId?: string; billingEmail?: string; phone?: string; billingAddress?: string;
   invoiceFooter?: string; isOwnCompany?: boolean;
   currency: string; paymentTermsDays: number; notes?: string; tags?: string[];

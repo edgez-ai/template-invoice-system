@@ -165,7 +165,7 @@ and totals so later customer edits never rewrite history.
 
 The same table holds exactly one internal issuer row marked `isOwnCompany`.
 That row is excluded from customer screens and stores the legal identity,
-contact details, address, tax number, base currency, default terms, and invoice
+contact details, address, tax and VAT numbers, base currency, default terms, and invoice
 footer/payment instructions copied into quotation and invoice snapshots.
 
 Indexes: name search/full-text, `status`, `ownerUserId`, `taxNumber` unique when

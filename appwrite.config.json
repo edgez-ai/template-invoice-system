@@ -80,6 +80,7 @@
         { "key": "name", "type": "varchar", "size": 160, "required": true },
         { "key": "legalName", "type": "varchar", "size": 200, "required": false },
         { "key": "taxNumber", "type": "varchar", "size": 80, "required": false },
+        { "key": "vatNumber", "type": "varchar", "size": 80, "required": false },
         { "key": "website", "type": "varchar", "size": 320, "required": false },
         { "key": "industry", "type": "varchar", "size": 100, "required": false },
         { "key": "status", "type": "varchar", "size": 24, "required": true },

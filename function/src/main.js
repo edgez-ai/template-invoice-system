@@ -4,6 +4,7 @@ import { cleanText, parseActionBody, projectNumber, safeJson } from "./business.
 const DATABASE_ID = process.env.INVOICE_DATABASE_ID || "invoice-system";
 const STAFF_TEAM_ID = process.env.INVOICE_STAFF_TEAM_ID || "invoice-staff";
 const LEDGER_TABLE_ID = "number-sequences";
+let ledgerColumnCache;
 
 function serverClient(req) {
   return new Client()
@@ -31,9 +32,26 @@ function requireRole(membership, allowed) {
   }
 }
 
+async function ledgerColumns(tables) {
+  if (ledgerColumnCache) return ledgerColumnCache;
+  const table = await tables.getTable({ databaseId: DATABASE_ID, tableId: LEDGER_TABLE_ID });
+  ledgerColumnCache = new Set((table.columns || []).map((column) => column.key));
+  return ledgerColumnCache;
+}
+
+function compatibleLedgerData(columns, core, payload, legacy) {
+  const data = { ...core };
+  if (columns.has("payload")) data.payload = payload;
+  for (const [key, value] of Object.entries(legacy)) {
+    if (columns.has(key)) data[key] = value;
+  }
+  return data;
+}
+
 async function nextProjectNumber(tables) {
   const year = new Date().getUTCFullYear();
   const rowId = `project-${year}`;
+  const columns = await ledgerColumns(tables);
   let sequence;
   try {
     sequence = await tables.getRow({ databaseId: DATABASE_ID, tableId: LEDGER_TABLE_ID, rowId });
@@ -43,10 +61,16 @@ async function nextProjectNumber(tables) {
       databaseId: DATABASE_ID,
       tableId: LEDGER_TABLE_ID,
       rowId,
-      data: {
-        prefix: "PRJ", year, nextValue: 1, padding: 4,
-        payload: JSON.stringify({ kind: "sequence", key: rowId, nextValue: 1 }),
-      },
+      data: compatibleLedgerData(
+        columns,
+        { prefix: "PRJ", year, nextValue: 1, padding: 4 },
+        JSON.stringify({ kind: "sequence", key: rowId, nextValue: 1 }),
+        {
+          actorUserId: "system", action: "sequence.project", entityType: "system", entityId: rowId,
+          beforeJson: "", afterJson: JSON.stringify({ nextValue: 1 }), requestId: rowId,
+          createdAt: new Date().toISOString(),
+        },
+      ),
     });
   }
   const number = projectNumber(sequence.year, sequence.nextValue, sequence.padding);
@@ -54,23 +78,33 @@ async function nextProjectNumber(tables) {
     databaseId: DATABASE_ID,
     tableId: LEDGER_TABLE_ID,
     rowId,
-    data: {
-      nextValue: sequence.nextValue + 1,
-      payload: JSON.stringify({ kind: "sequence", key: rowId, nextValue: sequence.nextValue + 1 }),
-    },
+    data: compatibleLedgerData(
+      columns,
+      { nextValue: sequence.nextValue + 1 },
+      JSON.stringify({ kind: "sequence", key: rowId, nextValue: sequence.nextValue + 1 }),
+      { afterJson: JSON.stringify({ nextValue: sequence.nextValue + 1 }) },
+    ),
   });
   return number;
 }
 
 async function audit(tables, actorUserId, action, entityType, entityId, before, after, requestId) {
+  const columns = await ledgerColumns(tables);
+  const payload = safeJson({ kind: "audit", actorUserId, action, entityType, entityId, before, after, requestId });
   await tables.createRow({
     databaseId: DATABASE_ID,
     tableId: LEDGER_TABLE_ID,
     rowId: requestId,
-    data: {
-      prefix: "AUDIT", year: new Date().getUTCFullYear(), nextValue: 1, padding: 1,
-      payload: safeJson({ kind: "audit", actorUserId, action, entityType, entityId, before, after, requestId }),
-    },
+    data: compatibleLedgerData(
+      columns,
+      { prefix: "AUDIT", year: new Date().getUTCFullYear(), nextValue: 1, padding: 1 },
+      payload,
+      {
+        actorUserId, action, entityType, entityId,
+        beforeJson: safeJson(before), afterJson: safeJson(after), requestId,
+        createdAt: new Date().toISOString(),
+      },
+    ),
   });
 }
 

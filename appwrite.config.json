@@ -22,7 +22,7 @@
       "enabled": true,
       "logging": true,
       "runtimeSpecification": "s-1vcpu-2gb",
-      "scopes": ["users.read", "teams.read", "rows.read", "rows.write", "files.read", "files.write"],
+      "scopes": ["users.read", "teams.read", "tables.read", "rows.read", "rows.write", "files.read", "files.write"],
       "vars": [
         { "key": "INVOICE_DATABASE_ID", "value": "invoice-system" },
         { "key": "INVOICE_STAFF_TEAM_ID", "value": "invoice-staff" },

@@ -1,0 +1,245 @@
+{
+  "projectId": "invoice-system",
+  "endpoint": "https://appwrite.edgez.ai/v1",
+  "functions": [
+    {
+      "$id": "invoice-workflows",
+      "name": "Invoice System workflows",
+      "runtime": "node-24",
+      "path": "function",
+      "entrypoint": "src/main.js",
+      "commands": "npm ci",
+      "execute": ["users"],
+      "events": [],
+      "schedule": "",
+      "timeout": 30,
+      "enabled": true,
+      "logging": true,
+      "runtimeSpecification": "s-1vcpu-2gb",
+      "scopes": ["users.read", "teams.read", "rows.read", "rows.write", "files.read", "files.write"],
+      "vars": [
+        { "key": "INVOICE_DATABASE_ID", "value": "invoice-system" },
+        { "key": "INVOICE_STAFF_TEAM_ID", "value": "invoice-staff" },
+        { "key": "INVOICE_FILES_BUCKET_ID", "value": "invoice-files" }
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "$id": "invoice-system-site",
+      "name": "Invoice System",
+      "framework": "nextjs",
+      "buildRuntime": "node-24",
+      "buildSpecification": "s-1vcpu-2gb",
+      "adapter": "static",
+      "path": "site",
+      "enabled": true,
+      "logging": true,
+      "timeout": 30,
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build",
+      "outputDirectory": "out",
+      "fallbackFile": "index.html",
+      "vars": [
+        { "key": "INVOICE_DATABASE_ID", "value": "invoice-system" },
+        { "key": "INVOICE_STAFF_TEAM_ID", "value": "invoice-staff" },
+        { "key": "INVOICE_FILES_BUCKET_ID", "value": "invoice-files" },
+        { "key": "INVOICE_WORKFLOW_FUNCTION_ID", "value": "invoice-workflows" }
+      ]
+    }
+  ],
+  "tablesDB": [
+    { "$id": "invoice-system", "name": "Invoice System", "enabled": true }
+  ],
+  "buckets": [
+    {
+      "$id": "invoice-files",
+      "name": "Invoice files",
+      "permissions": ["create(\"team:invoice-staff\")"],
+      "fileSecurity": true,
+      "enabled": true,
+      "maximumFileSize": 26214400,
+      "allowedFileExtensions": ["pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg", "webp", "txt", "csv", "eml"],
+      "compression": "none",
+      "encryption": true,
+      "antivirus": true
+    }
+  ],
+  "tables": [
+    {
+      "$id": "companies", "databaseId": "invoice-system", "name": "Companies",
+      "permissions": ["read(\"team:invoice-staff\")", "create(\"team:invoice-staff\")", "update(\"team:invoice-staff\")"],
+      "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "name", "type": "varchar", "size": 160, "required": true },
+        { "key": "legalName", "type": "varchar", "size": 200, "required": false },
+        { "key": "taxNumber", "type": "varchar", "size": 80, "required": false },
+        { "key": "website", "type": "varchar", "size": 320, "required": false },
+        { "key": "industry", "type": "varchar", "size": 100, "required": false },
+        { "key": "status", "type": "varchar", "size": 24, "required": true },
+        { "key": "ownerUserId", "type": "varchar", "size": 36, "required": false },
+        { "key": "billingEmail", "type": "varchar", "size": 320, "required": false },
+        { "key": "billingAddress", "type": "varchar", "size": 1000, "required": false },
+        { "key": "currency", "type": "varchar", "size": 3, "required": true },
+        { "key": "paymentTermsDays", "type": "integer", "min": 0, "max": 365, "required": true },
+        { "key": "notes", "type": "varchar", "size": 5000, "required": false },
+        { "key": "tags", "type": "varchar", "size": 64, "required": false, "array": true },
+        { "key": "createdBy", "type": "varchar", "size": 36, "required": true },
+        { "key": "updatedBy", "type": "varchar", "size": 36, "required": true }
+      ],
+      "indexes": [
+        { "key": "company-name", "type": "fulltext", "attributes": ["name"] },
+        { "key": "company-status", "type": "key", "attributes": ["status"] },
+        { "key": "company-owner", "type": "key", "attributes": ["ownerUserId"] }
+      ]
+    },
+    {
+      "$id": "contacts", "databaseId": "invoice-system", "name": "Contacts",
+      "permissions": ["read(\"team:invoice-staff\")", "create(\"team:invoice-staff\")", "update(\"team:invoice-staff\")"],
+      "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "companyId", "type": "varchar", "size": 36, "required": true },
+        { "key": "firstName", "type": "varchar", "size": 100, "required": true },
+        { "key": "lastName", "type": "varchar", "size": 100, "required": false },
+        { "key": "displayName", "type": "varchar", "size": 220, "required": true },
+        { "key": "jobTitle", "type": "varchar", "size": 160, "required": false },
+        { "key": "email", "type": "varchar", "size": 320, "required": false },
+        { "key": "phone", "type": "varchar", "size": 50, "required": false },
+        { "key": "isPrimary", "type": "boolean", "required": true },
+        { "key": "status", "type": "varchar", "size": 24, "required": true },
+        { "key": "notes", "type": "varchar", "size": 3000, "required": false },
+        { "key": "createdBy", "type": "varchar", "size": 36, "required": true },
+        { "key": "updatedBy", "type": "varchar", "size": 36, "required": true }
+      ],
+      "indexes": [
+        { "key": "contact-company", "type": "key", "attributes": ["companyId"] },
+        { "key": "contact-name", "type": "fulltext", "attributes": ["displayName"] },
+        { "key": "contact-email", "type": "key", "attributes": ["email"] }
+      ]
+    },
+    {
+      "$id": "interests", "databaseId": "invoice-system", "name": "Interests",
+      "permissions": ["read(\"team:invoice-staff\")", "create(\"team:invoice-staff\")", "update(\"team:invoice-staff\")"],
+      "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "companyId", "type": "varchar", "size": 36, "required": true },
+        { "key": "primaryContactId", "type": "varchar", "size": 36, "required": false },
+        { "key": "title", "type": "varchar", "size": 220, "required": true },
+        { "key": "description", "type": "varchar", "size": 5000, "required": false },
+        { "key": "source", "type": "varchar", "size": 80, "required": false },
+        { "key": "status", "type": "varchar", "size": 24, "required": true },
+        { "key": "ownerUserId", "type": "varchar", "size": 36, "required": true },
+        { "key": "estimatedValueMinor", "type": "integer", "min": 0, "required": true },
+        { "key": "currency", "type": "varchar", "size": 3, "required": true },
+        { "key": "probability", "type": "integer", "min": 0, "max": 100, "required": true },
+        { "key": "nextActionAt", "type": "datetime", "required": false },
+        { "key": "expectedCloseDate", "type": "datetime", "required": false },
+        { "key": "convertedProjectId", "type": "varchar", "size": 36, "required": false },
+        { "key": "createdBy", "type": "varchar", "size": 36, "required": true },
+        { "key": "updatedBy", "type": "varchar", "size": 36, "required": true }
+      ],
+      "indexes": [
+        { "key": "interest-company", "type": "key", "attributes": ["companyId"] },
+        { "key": "interest-owner-status", "type": "key", "attributes": ["ownerUserId", "status"] },
+        { "key": "interest-next-action", "type": "key", "attributes": ["nextActionAt"] }
+      ]
+    },
+    {
+      "$id": "activities", "databaseId": "invoice-system", "name": "Activities",
+      "permissions": ["read(\"team:invoice-staff\")", "create(\"team:invoice-staff\")"],
+      "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "entityType", "type": "varchar", "size": 24, "required": true },
+        { "key": "entityId", "type": "varchar", "size": 36, "required": true },
+        { "key": "companyId", "type": "varchar", "size": 36, "required": false },
+        { "key": "contactId", "type": "varchar", "size": 36, "required": false },
+        { "key": "activityType", "type": "varchar", "size": 24, "required": true },
+        { "key": "direction", "type": "varchar", "size": 16, "required": false },
+        { "key": "subject", "type": "varchar", "size": 240, "required": true },
+        { "key": "body", "type": "varchar", "size": 10000, "required": false },
+        { "key": "occurredAt", "type": "datetime", "required": true },
+        { "key": "nextActionAt", "type": "datetime", "required": false },
+        { "key": "assignedToUserId", "type": "varchar", "size": 36, "required": false },
+        { "key": "outcome", "type": "varchar", "size": 240, "required": false },
+        { "key": "createdBy", "type": "varchar", "size": 36, "required": true }
+      ],
+      "indexes": [
+        { "key": "activity-entity-time", "type": "key", "attributes": ["entityType", "entityId", "occurredAt"], "orders": ["ASC", "ASC", "DESC"] },
+        { "key": "activity-company-time", "type": "key", "attributes": ["companyId", "occurredAt"], "orders": ["ASC", "DESC"] },
+        { "key": "activity-followup", "type": "key", "attributes": ["assignedToUserId", "nextActionAt"] }
+      ]
+    },
+    {
+      "$id": "projects", "databaseId": "invoice-system", "name": "Projects",
+      "permissions": ["read(\"team:invoice-staff\")"], "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "companyId", "type": "varchar", "size": 36, "required": true },
+        { "key": "interestId", "type": "varchar", "size": 36, "required": false },
+        { "key": "projectNumber", "type": "varchar", "size": 40, "required": true },
+        { "key": "name", "type": "varchar", "size": 220, "required": true },
+        { "key": "description", "type": "varchar", "size": 5000, "required": false },
+        { "key": "status", "type": "varchar", "size": 24, "required": true },
+        { "key": "ownerUserId", "type": "varchar", "size": 36, "required": true },
+        { "key": "currency", "type": "varchar", "size": 3, "required": true },
+        { "key": "contractValueMinor", "type": "integer", "min": 0, "required": true },
+        { "key": "createdBy", "type": "varchar", "size": 36, "required": true },
+        { "key": "updatedBy", "type": "varchar", "size": 36, "required": true }
+      ],
+      "indexes": [
+        { "key": "project-number", "type": "unique", "attributes": ["projectNumber"] },
+        { "key": "project-company", "type": "key", "attributes": ["companyId"] },
+        { "key": "project-interest", "type": "key", "attributes": ["interestId"] },
+        { "key": "project-owner-status", "type": "key", "attributes": ["ownerUserId", "status"] }
+      ]
+    },
+    {
+      "$id": "files", "databaseId": "invoice-system", "name": "File metadata",
+      "permissions": ["read(\"team:invoice-staff\")", "create(\"team:invoice-staff\")"], "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "fileId", "type": "varchar", "size": 36, "required": true },
+        { "key": "folder", "type": "varchar", "size": 500, "required": true },
+        { "key": "entityType", "type": "varchar", "size": 24, "required": true },
+        { "key": "entityId", "type": "varchar", "size": 36, "required": true },
+        { "key": "category", "type": "varchar", "size": 32, "required": true },
+        { "key": "originalName", "type": "varchar", "size": 500, "required": true },
+        { "key": "mimeType", "type": "varchar", "size": 160, "required": true },
+        { "key": "sizeBytes", "type": "integer", "min": 0, "required": true },
+        { "key": "uploadedBy", "type": "varchar", "size": 36, "required": true },
+        { "key": "uploadedAt", "type": "datetime", "required": true }
+      ],
+      "indexes": [
+        { "key": "file-id", "type": "unique", "attributes": ["fileId"] },
+        { "key": "file-entity", "type": "key", "attributes": ["entityType", "entityId"] }
+      ]
+    },
+    {
+      "$id": "number-sequences", "databaseId": "invoice-system", "name": "Number sequences",
+      "permissions": [], "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "prefix", "type": "varchar", "size": 12, "required": true },
+        { "key": "year", "type": "integer", "min": 2000, "max": 2200, "required": true },
+        { "key": "nextValue", "type": "integer", "min": 1, "required": true },
+        { "key": "padding", "type": "integer", "min": 1, "max": 12, "required": true }
+      ],
+      "indexes": []
+    },
+    {
+      "$id": "audit-logs", "databaseId": "invoice-system", "name": "Audit logs",
+      "permissions": ["read(\"team:invoice-staff/admin\")"], "rowSecurity": false, "enabled": true,
+      "columns": [
+        { "key": "actorUserId", "type": "varchar", "size": 36, "required": true },
+        { "key": "action", "type": "varchar", "size": 80, "required": true },
+        { "key": "entityType", "type": "varchar", "size": 32, "required": true },
+        { "key": "entityId", "type": "varchar", "size": 36, "required": true },
+        { "key": "beforeJson", "type": "varchar", "size": 10000, "required": false },
+        { "key": "afterJson", "type": "varchar", "size": 10000, "required": false },
+        { "key": "requestId", "type": "varchar", "size": 64, "required": true },
+        { "key": "createdAt", "type": "datetime", "required": true }
+      ],
+      "indexes": [
+        { "key": "audit-entity-time", "type": "key", "attributes": ["entityType", "entityId", "createdAt"], "orders": ["ASC", "ASC", "DESC"] },
+        { "key": "audit-request", "type": "unique", "attributes": ["requestId"] }
+      ]
+    }
+  ]
+}

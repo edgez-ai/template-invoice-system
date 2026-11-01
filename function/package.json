@@ -1,0 +1,13 @@
+{
+  "name": "invoice-system-function",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/main.js",
+    "test": "node --test src/main.test.js"
+  },
+  "dependencies": {
+    "node-appwrite": "^20.0.0"
+  }
+}

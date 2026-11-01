@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "invoice-system",
+  "buildInstance": "small",
+  "appwriteConfig": "appwrite.config.json",
+  "deploymentEngine": {
+    "name": "appwrite-cli",
+    "schemaVersion": 1,
+    "directory": "infra",
+    "install": "npm run install:solution",
+    "uninstall": "npm run uninstall:solution"
+  },
+  "deployments": [
+    {
+      "id": "workflows",
+      "type": "function",
+      "name": "Invoice System workflows",
+      "rootDirectory": "function",
+      "runtime": "node-24",
+      "entrypoint": "src/main.js",
+      "installCommand": "npm ci"
+    },
+    {
+      "id": "web",
+      "type": "site",
+      "name": "Invoice System",
+      "rootDirectory": "site",
+      "framework": "nextjs",
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build",
+      "outputDirectory": "out"
+    }
+  ]
+}

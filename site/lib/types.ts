@@ -27,7 +27,23 @@ export type Activity = Models.Row & {
 
 export type Project = Models.Row & {
   companyId: string; interestId?: string; projectNumber: string; name: string;
-  description?: string; status: string; ownerUserId: string; currency: string; contractValueMinor: number;
+  description?: string; detailsJson?: string; commercialJson?: string; status: string;
+  ownerUserId: string; currency: string; contractValueMinor: number;
+};
+
+export type FileMetadata = Models.Row & {
+  fileId: string; folder: string; entityType: string; entityId: string; category: string;
+  originalName: string; mimeType: string; sizeBytes: number; uploadedBy: string; uploadedAt: string;
+};
+
+export type PaymentStage = {
+  id: string; name: string; description?: string; amountMinor: number; vatRateBasisPoints: number;
+  dueDate?: string; status: "planned" | "invoiced"; invoiceId?: string;
+};
+
+export type ProjectInvoice = {
+  id: string; number: string; stageId: string; fileId: string; issueDate: string; dueDate?: string;
+  subtotalMinor: number; vatMinor: number; totalMinor: number; status: "issued" | "paid" | "void";
 };
 
 export type Section = "dashboard" | "companies" | "contacts" | "pipeline" | "projects" | "finance" | "settings";

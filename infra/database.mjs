@@ -5,6 +5,7 @@ function createColumnArgs(tableId, column) {
   let command;
   if (column.type === "varchar") command = ["tables-db", "create-string-column", ...base, "--size", String(column.size)];
   else if (column.type === "text") command = ["tables-db", "create-text-column", ...base];
+  else if (column.type === "mediumtext") command = ["tables-db", "create-mediumtext-column", ...base];
   else if (column.type === "integer") command = ["tables-db", "create-integer-column", ...base];
   else if (column.type === "boolean") command = ["tables-db", "create-boolean-column", ...base];
   else if (column.type === "datetime") command = ["tables-db", "create-datetime-column", ...base];

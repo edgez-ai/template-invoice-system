@@ -1,8 +1,11 @@
-import { Client, ID, TablesDB } from "node-appwrite";
+import { Client, ID, Permission, Query, Role, Storage, TablesDB } from "node-appwrite";
+import { InputFile } from "node-appwrite/file";
 import { cleanText, parseActionBody, projectNumber, safeJson } from "./business.js";
+import { renderInvoicePdf } from "./invoice-pdf.js";
 
 const DATABASE_ID = process.env.INVOICE_DATABASE_ID || "invoice-system";
 const STAFF_TEAM_ID = process.env.INVOICE_STAFF_TEAM_ID || "invoice-staff";
+const FILES_BUCKET_ID = process.env.INVOICE_FILES_BUCKET_ID || "invoice-files";
 const LEDGER_TABLE_ID = "number-sequences";
 let ledgerColumnCache;
 
@@ -48,9 +51,9 @@ function compatibleLedgerData(columns, core, payload, legacy) {
   return data;
 }
 
-async function nextProjectNumber(tables) {
+async function nextDocumentNumber(tables, kind, prefix) {
   const year = new Date().getUTCFullYear();
-  const rowId = `project-${year}`;
+  const rowId = `${kind}-${year}`;
   const columns = await ledgerColumns(tables);
   let sequence;
   try {
@@ -63,17 +66,17 @@ async function nextProjectNumber(tables) {
       rowId,
       data: compatibleLedgerData(
         columns,
-        { prefix: "PRJ", year, nextValue: 1, padding: 4 },
+        { prefix, year, nextValue: 1, padding: 4 },
         JSON.stringify({ kind: "sequence", key: rowId, nextValue: 1 }),
         {
-          actorUserId: "system", action: "sequence.project", entityType: "system", entityId: rowId,
+          actorUserId: "system", action: `sequence.${kind}`, entityType: "system", entityId: rowId,
           beforeJson: "", afterJson: JSON.stringify({ nextValue: 1 }), requestId: rowId,
           createdAt: new Date().toISOString(),
         },
       ),
     });
   }
-  const number = projectNumber(sequence.year, sequence.nextValue, sequence.padding);
+  const number = `${prefix}-${sequence.year}-${String(sequence.nextValue).padStart(sequence.padding, "0")}`;
   await tables.updateRow({
     databaseId: DATABASE_ID,
     tableId: LEDGER_TABLE_ID,
@@ -86,6 +89,19 @@ async function nextProjectNumber(tables) {
     ),
   });
   return number;
+}
+
+function parseJson(value, fallback) {
+  try { return typeof value === "string" && value ? JSON.parse(value) : fallback; }
+  catch { return fallback; }
+}
+
+function commercialOf(project) {
+  const value = parseJson(project.commercialJson, {});
+  return {
+    stages: Array.isArray(value.stages) ? value.stages : [],
+    invoices: Array.isArray(value.invoices) ? value.invoices : [],
+  };
 }
 
 async function audit(tables, actorUserId, action, entityType, entityId, before, after, requestId) {
@@ -125,9 +141,11 @@ async function convertInterest(tables, actorUserId, body, requestId) {
     data: {
       companyId: interest.companyId,
       interestId,
-      projectNumber: await nextProjectNumber(tables),
+      projectNumber: await nextDocumentNumber(tables, "project", "PRJ"),
       name: cleanText(body.name || interest.title, "Project name", 220, true),
       description: cleanText(body.description || interest.description, "Description", 5000),
+      detailsJson: JSON.stringify({ scope: "", startDate: "", targetDate: "", notes: "" }),
+      commercialJson: JSON.stringify({ stages: [], invoices: [] }),
       status: "draft",
       ownerUserId: interest.ownerUserId || actorUserId,
       currency: interest.currency,
@@ -146,6 +164,89 @@ async function convertInterest(tables, actorUserId, body, requestId) {
   return project;
 }
 
+async function updateProject(tables, actorUserId, body) {
+  const projectId = cleanText(body.projectId, "Project ID", 36, true);
+  const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
+  const details = {
+    scope: cleanText(body.scope, "Scope", 10000),
+    startDate: cleanText(body.startDate, "Start date", 40),
+    targetDate: cleanText(body.targetDate, "Target date", 40),
+    notes: cleanText(body.notes, "Notes", 10000),
+  };
+  return tables.updateRow({
+    databaseId: DATABASE_ID, tableId: "projects", rowId: projectId,
+    data: {
+      name: cleanText(body.name || project.name, "Project name", 220, true),
+      description: cleanText(body.description, "Description", 5000),
+      detailsJson: JSON.stringify(details), updatedBy: actorUserId,
+    },
+  });
+}
+
+async function addStage(tables, actorUserId, body) {
+  const projectId = cleanText(body.projectId, "Project ID", 36, true);
+  const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
+  const commercial = commercialOf(project);
+  const amountMinor = Math.round(Number(body.amountMinor));
+  const vatRateBasisPoints = Math.round(Number(body.vatRateBasisPoints || 0));
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error("Stage amount must be greater than zero.");
+  if (!Number.isInteger(vatRateBasisPoints) || vatRateBasisPoints < 0 || vatRateBasisPoints > 10000) throw new Error("VAT rate is invalid.");
+  const stage = {
+    id: crypto.randomUUID(), name: cleanText(body.name, "Stage name", 160, true),
+    description: cleanText(body.description, "Stage description", 1000), amountMinor,
+    vatRateBasisPoints, dueDate: cleanText(body.dueDate, "Due date", 40), status: "planned",
+    createdAt: new Date().toISOString(), createdBy: actorUserId,
+  };
+  commercial.stages.push(stage);
+  await tables.updateRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId,
+    data: { commercialJson: JSON.stringify(commercial), updatedBy: actorUserId } });
+  return stage;
+}
+
+async function generateInvoice(tables, storage, actorUserId, body) {
+  const projectId = cleanText(body.projectId, "Project ID", 36, true);
+  const stageId = cleanText(body.stageId, "Stage ID", 36, true);
+  const project = await tables.getRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId });
+  const customer = await tables.getRow({ databaseId: DATABASE_ID, tableId: "companies", rowId: project.companyId });
+  const issuerList = await tables.listRows({ databaseId: DATABASE_ID, tableId: "companies",
+    queries: [Query.equal("isOwnCompany", true), Query.limit(1)] });
+  const issuer = issuerList.rows?.[0];
+  if (!issuer) throw new Error("Complete Our company before generating an invoice.");
+  const commercial = commercialOf(project);
+  const stage = commercial.stages.find((candidate) => candidate.id === stageId);
+  if (!stage) throw new Error("Payment stage was not found.");
+  if (stage.invoiceId) throw new Error("This stage already has an invoice.");
+  const issueDate = new Date().toISOString().slice(0, 10);
+  const vatMinor = Math.round(stage.amountMinor * stage.vatRateBasisPoints / 10000);
+  const invoice = {
+    id: crypto.randomUUID(), number: await nextDocumentNumber(tables, "invoice", "INV"), stageId,
+    fileId: "", issueDate, dueDate: stage.dueDate || "", subtotalMinor: stage.amountMinor,
+    vatMinor, totalMinor: stage.amountMinor + vatMinor, status: "issued", createdBy: actorUserId,
+  };
+  const pdf = await renderInvoicePdf({ issuer, customer, project, stage, invoice });
+  const fileId = ID.unique();
+  const fileName = `${invoice.number}.pdf`;
+  const permissions = [
+    Permission.read(Role.team(STAFF_TEAM_ID)),
+    Permission.update(Role.team(STAFF_TEAM_ID, "admin")),
+    Permission.update(Role.team(STAFF_TEAM_ID, "finance")),
+    Permission.delete(Role.team(STAFF_TEAM_ID, "admin")),
+  ];
+  const file = await storage.createFile({ bucketId: FILES_BUCKET_ID, fileId,
+    file: InputFile.fromBuffer(pdf, fileName), permissions });
+  invoice.fileId = file.$id;
+  commercial.invoices.push(invoice);
+  stage.status = "invoiced"; stage.invoiceId = invoice.id;
+  await tables.createRow({ databaseId: DATABASE_ID, tableId: "files", rowId: ID.unique(), data: {
+    fileId: file.$id, folder: `projects/${projectId}/invoices/`, entityType: "project", entityId: projectId,
+    category: "invoice", originalName: fileName, mimeType: file.mimeType || "application/pdf",
+    sizeBytes: file.sizeOriginal || pdf.length, uploadedBy: actorUserId, uploadedAt: new Date().toISOString(),
+  }});
+  await tables.updateRow({ databaseId: DATABASE_ID, tableId: "projects", rowId: projectId,
+    data: { commercialJson: JSON.stringify(commercial), updatedBy: actorUserId } });
+  return invoice;
+}
+
 export default async ({ req, res, log, error }) => {
   const requestId = req.headers["x-appwrite-execution-id"] || crypto.randomUUID();
   try {
@@ -155,7 +256,9 @@ export default async ({ req, res, log, error }) => {
     if (!membership) return res.json({ ok: false, error: "Confirmed staff membership required." }, 403);
     const body = parseActionBody(req.bodyText || req.body);
     const action = cleanText(body.action, "Action", 80, true);
-    const tables = new TablesDB(serverClient(req));
+    const client = serverClient(req);
+    const tables = new TablesDB(client);
+    const storage = new Storage(client);
 
     if (action === "health") return res.json({ ok: true, userId, roles: membership.roles });
     if (action === "interest.convert") {
@@ -163,6 +266,18 @@ export default async ({ req, res, log, error }) => {
       const project = await convertInterest(tables, userId, body, requestId);
       log(`Converted interest ${body.interestId} to project ${project.$id}`);
       return res.json({ ok: true, project });
+    }
+    if (action === "project.update") {
+      requireRole(membership, ["admin", "sales"]);
+      return res.json({ ok: true, project: await updateProject(tables, userId, body) });
+    }
+    if (action === "project.stage.add") {
+      requireRole(membership, ["admin", "sales", "finance"]);
+      return res.json({ ok: true, stage: await addStage(tables, userId, body) });
+    }
+    if (action === "project.invoice.generate") {
+      requireRole(membership, ["admin", "sales", "finance"]);
+      return res.json({ ok: true, invoice: await generateInvoice(tables, storage, userId, body) });
     }
     return res.json({ ok: false, error: "Unknown action." }, 404);
   } catch (caught) {

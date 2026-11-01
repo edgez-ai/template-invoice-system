@@ -100,7 +100,8 @@
       "indexes": [
         { "key": "company-name", "type": "fulltext", "attributes": ["name"] },
         { "key": "company-status", "type": "key", "attributes": ["status"] },
-        { "key": "company-owner", "type": "key", "attributes": ["ownerUserId"] }
+        { "key": "company-owner", "type": "key", "attributes": ["ownerUserId"] },
+        { "key": "own-company", "type": "key", "attributes": ["isOwnCompany"] }
       ]
     },
     {
@@ -188,6 +189,8 @@
         { "key": "projectNumber", "type": "varchar", "size": 40, "required": true },
         { "key": "name", "type": "varchar", "size": 220, "required": true },
         { "key": "description", "type": "varchar", "size": 5000, "required": false },
+        { "key": "detailsJson", "type": "text", "required": false },
+        { "key": "commercialJson", "type": "mediumtext", "required": false },
         { "key": "status", "type": "varchar", "size": 24, "required": true },
         { "key": "ownerUserId", "type": "varchar", "size": 36, "required": true },
         { "key": "currency", "type": "varchar", "size": 3, "required": true },

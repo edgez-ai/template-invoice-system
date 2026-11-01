@@ -8,6 +8,7 @@
     "test": "node --test src/main.test.js"
   },
   "dependencies": {
-    "node-appwrite": "^20.0.0"
+    "node-appwrite": "^20.0.0",
+    "pdfkit": "^0.17.2"
   }
 }

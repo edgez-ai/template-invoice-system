@@ -323,7 +323,9 @@ Sensitive provider credentials remain Function secrets, never table values.
 
 Audit rows in the same ledger are append-only: `actorUserId`, `action`,
 `entityType`, `entityId`, `beforeJson`, `afterJson`, `requestId`, `createdAt`.
-The Function writes them; administrators can read them.
+The JSON snapshots use Appwrite `text` columns so their content is stored
+off-row and does not consume the database engine's fixed inline row-width
+budget. The Function writes them; administrators can read them.
 
 ## 6. Files and document storage
 

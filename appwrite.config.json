@@ -224,8 +224,8 @@
         { "key": "action", "type": "varchar", "size": 80, "required": true },
         { "key": "entityType", "type": "varchar", "size": 32, "required": true },
         { "key": "entityId", "type": "varchar", "size": 36, "required": true },
-        { "key": "beforeJson", "type": "varchar", "size": 10000, "required": false },
-        { "key": "afterJson", "type": "varchar", "size": 10000, "required": false },
+        { "key": "beforeJson", "type": "text", "required": false },
+        { "key": "afterJson", "type": "text", "required": false },
         { "key": "requestId", "type": "varchar", "size": 64, "required": true },
         { "key": "createdAt", "type": "datetime", "required": true }
       ],

@@ -45,9 +45,7 @@ async function nextProjectNumber(tables) {
       rowId,
       data: {
         prefix: "PRJ", year, nextValue: 1, padding: 4,
-        actorUserId: "system", action: "sequence.project", entityType: "system",
-        entityId: rowId, beforeJson: "", afterJson: JSON.stringify({ nextValue: 1 }),
-        requestId: rowId, createdAt: new Date().toISOString(),
+        payload: JSON.stringify({ kind: "sequence", key: rowId, nextValue: 1 }),
       },
     });
   }
@@ -56,7 +54,10 @@ async function nextProjectNumber(tables) {
     databaseId: DATABASE_ID,
     tableId: LEDGER_TABLE_ID,
     rowId,
-    data: { nextValue: sequence.nextValue + 1, afterJson: JSON.stringify({ nextValue: sequence.nextValue + 1 }) },
+    data: {
+      nextValue: sequence.nextValue + 1,
+      payload: JSON.stringify({ kind: "sequence", key: rowId, nextValue: sequence.nextValue + 1 }),
+    },
   });
   return number;
 }
@@ -65,12 +66,10 @@ async function audit(tables, actorUserId, action, entityType, entityId, before, 
   await tables.createRow({
     databaseId: DATABASE_ID,
     tableId: LEDGER_TABLE_ID,
-    rowId: ID.unique(),
+    rowId: requestId,
     data: {
       prefix: "AUDIT", year: new Date().getUTCFullYear(), nextValue: 1, padding: 1,
-      actorUserId, action, entityType, entityId,
-      beforeJson: safeJson(before), afterJson: safeJson(after),
-      requestId, createdAt: new Date().toISOString(),
+      payload: safeJson({ kind: "audit", actorUserId, action, entityType, entityId, before, after, requestId }),
     },
   });
 }

@@ -220,19 +220,9 @@
         { "key": "year", "type": "integer", "min": 2000, "max": 2200, "required": true },
         { "key": "nextValue", "type": "integer", "min": 1, "required": true },
         { "key": "padding", "type": "integer", "min": 1, "max": 12, "required": true },
-        { "key": "actorUserId", "type": "varchar", "size": 36, "required": true },
-        { "key": "action", "type": "varchar", "size": 80, "required": true },
-        { "key": "entityType", "type": "varchar", "size": 32, "required": true },
-        { "key": "entityId", "type": "varchar", "size": 36, "required": true },
-        { "key": "beforeJson", "type": "text", "required": false },
-        { "key": "afterJson", "type": "text", "required": false },
-        { "key": "requestId", "type": "varchar", "size": 64, "required": true },
-        { "key": "createdAt", "type": "datetime", "required": true }
+        { "key": "payload", "type": "text", "required": false }
       ],
-      "indexes": [
-        { "key": "ledger-entity-time", "type": "key", "attributes": ["entityType", "entityId", "createdAt"], "orders": ["ASC", "ASC", "DESC"] },
-        { "key": "ledger-request", "type": "unique", "attributes": ["requestId"] }
-      ]
+      "indexes": []
     }
   ]
 }

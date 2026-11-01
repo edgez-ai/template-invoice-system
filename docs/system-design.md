@@ -321,11 +321,14 @@ deployment can be upgraded in place. Sequence rows generate numbers such as
 Keyed business settings and document defaults. Only administrators write it.
 Sensitive provider credentials remain Function secrets, never table values.
 
-Audit rows in the same ledger are append-only: `actorUserId`, `action`,
-`entityType`, `entityId`, `beforeJson`, `afterJson`, `requestId`, `createdAt`.
-The JSON snapshots use Appwrite `text` columns so their content is stored
-off-row and does not consume the database engine's fixed inline row-width
-budget. The Function writes them; administrators can read them.
+Audit rows in the same ledger are append-only. To remain comfortably below the
+shared tier's column limit, the table has only the four original sequence
+columns plus one `payload` column. Audit actor, action, entity, request ID, and
+before/after snapshots are encoded in that payload. It is an Appwrite `text`
+column, so it is stored off-row and does not consume the database engine's
+fixed inline row-width budget. The audit request ID is also the row ID, which
+makes retries idempotent; Appwrite's system `$createdAt` supplies the timestamp.
+The Function writes ledger rows; administrators can read them.
 
 ## 6. Files and document storage
 
